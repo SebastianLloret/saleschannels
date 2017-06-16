@@ -4,6 +4,7 @@ import xlrd
 import xlsxwriter
 import time
 import re
+from collections import Counter
 from tqdm import tqdm
 
 # Lists
@@ -79,20 +80,11 @@ def scrape(query, region, key, sheet, row):
         else:
             idlst.append(data['results'][0]['place_id'])
 
-            # I'm grabbing the storeType which is a list and making it into a space-separated string
-            storeType = ' '.join(data['results'][0]['types'])
-            # Estbalishment, POI, and store are all common types that aren't valuable to know
-            storeType = storeType.replace('establishment', '')
-            storeType = storeType.replace('point_of_interest', '')
-            storeType = re.sub(r'\bstore\b', '', storeType)
-
-            # I split the string back into a list and then rejoin it with commas to remove empty white space from the previous replaces
-            storeType = ', '.join(storeType.split())
-            storeType = storeType.replace('_', ' ')
+            storeType = [x for x in data['results'][0]['types'] if x not in ('establishment', 'point_of_interest', 'store')]
 
             # Google doesn't keep track of Toy/Gift stores, but given all their other types, if something is blank it's very likely a toy/gift shop or something very rare
             if not storeType:
-                storeType = 'toy/gift/misc (?)'
+                storeType.append('toy/gift/misc')
 
             # Add the type to the list
             typelst.append(storeType)
@@ -111,12 +103,15 @@ def scrape(query, region, key, sheet, row):
 def writeOut():
     workbook = xlsxwriter.Workbook('../data/output.xlsx')
     worksheet = workbook.add_worksheet()
+    worksheet2 = workbook.add_worksheet()
     row = 1
+    row2 = 1
 
     headerFormat = workbook.add_format({'font_color': 'white', 'bg_color': '#4f81bd', 'align': 'center'})
 
+    # 1st Sheet
     worksheet.write(0, 0, 'Name', headerFormat)
-    worksheet.write(0, 1, 'Types', headerFormat)
+    worksheet.write(0, 1, 'Type(s)', headerFormat)
     worksheet.write(0, 2, 'Address', headerFormat)
     worksheet.write(0, 3, 'City', headerFormat)
     worksheet.write(0, 4, 'State', headerFormat)
@@ -127,7 +122,7 @@ def writeOut():
     for i in range(0, len(namelst)):
         if(typelst[i] != 0):
             worksheet.write(row, 0, namelst[i])
-            worksheet.write(row, 1, typelst[i])
+            worksheet.write(row, 1, ', '.join(typelst[i]))
             worksheet.write(row, 2, addresslst[i])
             worksheet.write(row, 3, citylst[i])
             worksheet.write(row, 4, statelst[i])
@@ -135,6 +130,20 @@ def writeOut():
             worksheet.write(row, 6, countrylst[i])
             worksheet.write(row, 7, idlst[i])
             row = row + 1
+
+    # 2nd sheet
+    worksheet2.write(0, 0, 'Type', headerFormat)
+    worksheet2.write(0, 1, 'Count', headerFormat)
+
+    # I need to remove all the zeroes for Counter to work
+    newLst = (x for x in typelst if x != 0)
+    # I sum up the element of every sublist of the main list newLst
+    d = Counter(x for xs in newLst for x in set(xs))
+
+    for k, v in d.items():
+        worksheet2.write(row2, 0, k)
+        worksheet2.write(row2, 1, v)
+        row2 = row2 + 1
 
 if __name__ == '__main__':
     readIn()
